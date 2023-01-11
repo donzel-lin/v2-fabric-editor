@@ -1,0 +1,8 @@
+@font-face {
+    font-family: SourceMedium;
+    src: url('../assets/fonts/SourceHanSansCN-Medium.ttf');
+}
+@font-face {
+    font-family: SourceRegular;
+    src: url('../assets/fonts/SourceHanSansCN-Regular.ttf');
+}
