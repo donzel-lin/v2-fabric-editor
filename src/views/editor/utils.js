@@ -883,4 +883,65 @@ export const FabricUtils = class {
   static test () {
 
   }
+
+  // 下面的 moving和scaling未使用到
+  static moving (target, limitRect, canvas) {
+    function calcMinValue (num, min, max) {
+      return Math.min(Math.max(num, min), max)
+    }
+    canvas.on('object:moving', e => {
+      const target = e.target
+      target.setCoords()
+      const limitBounding = limitRect.getBoundingRect()
+      const targetBounding = target.getBoundingRect()
+      target.set({
+        left: calcMinValue(targetBounding.left, limitBounding.left, limitBounding.left + limitBounding.width - targetBounding.width),
+        top: calcMinValue(targetBounding.top, limitBounding.top, limitBounding.top + limitBounding.top - targetBounding.height)
+      })
+    })
+  }
+
+  static scaling (target, limitRect, canvas) {
+    canvas.on('object:scaling', e => {
+      const target = e.target
+      target.setCoords()
+      const targetBounding = target.getBoundingRect()
+      const limitBounding = limitRect.getBoundingRect()
+      let loc = {
+        width: 0,
+        height: 0,
+        left: 0,
+        top: 0,
+        scaleX: 0,
+        scaleY: 0
+      }
+      function isExceedBound (targetBounding, limitBounding) {
+        if (
+          targetBounding.left < limitBounding.left ||
+          targetBounding.top < limitBounding.top ||
+          targetBounding.left + targetBounding.width > limitBounding.left + limitBounding.width ||
+          targetBounding.top + targetBounding.height > limitBounding.top + limitBounding.height
+        ) {
+          return true
+        }
+        return false
+      }
+      if (isExceedBound(targetBounding, limitBounding)) {
+        // 有超出部分
+        target.set({
+          ...loc
+        })
+      } else {
+        // 未超出边界
+        loc = {
+          width: targetBounding.width,
+          height: targetBounding.height,
+          left: targetBounding.left,
+          top: targetBounding.top,
+          scaleX: targetBounding.scaleX,
+          scaleY: targetBounding.scaleY
+        }
+      }
+    })
+  }
 }
