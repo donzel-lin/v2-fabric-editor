@@ -894,10 +894,12 @@ export const FabricUtils = class {
       target.setCoords()
       const limitBounding = limitRect.getBoundingRect()
       const targetBounding = target.getBoundingRect()
-      target.set({
-        left: calcMinValue(targetBounding.left, limitBounding.left, limitBounding.left + limitBounding.width - targetBounding.width),
-        top: calcMinValue(targetBounding.top, limitBounding.top, limitBounding.top + limitBounding.top - targetBounding.height)
-      })
+      const viewportTransform = canvas.viewportTransform
+      const loc = {
+        left: (calcMinValue(targetBounding.left, limitBounding.left, limitBounding.left + limitBounding.width - targetBounding.width) - viewportTransform[4]) / viewportTransform[0],
+        top: (calcMinValue(targetBounding.top, limitBounding.top, limitBounding.top + limitBounding.top - targetBounding.height) - viewportTransform[5]) / viewportTransform[0]
+      }
+      target.set(loc)
     })
   }
 
@@ -907,7 +909,7 @@ export const FabricUtils = class {
       target.setCoords()
       const targetBounding = target.getBoundingRect()
       const limitBounding = limitRect.getBoundingRect()
-      let loc = {
+      let loc = { // 这个值需要在moving事件中也拿到
         width: 0,
         height: 0,
         left: 0,
@@ -943,5 +945,159 @@ export const FabricUtils = class {
         }
       }
     })
+  }
+
+  static modified (target, limitRect, canvas) {
+    canvas.on('object:modified', e => {
+      const action = e.action
+      if (action === 'drag') {
+        this.snapTest(target, [], limitRect, canvas)
+        // 更新 scaling中的loc
+        // loc.left = target.left
+        // loc.top = target.top
+      }
+    })
+  }
+
+  // lines 边界线
+  static snapTest (target, lines, limitRect, canvas, gap = 10) {
+    const vpt = canvas.viewportTransform
+    const vtpX = vpt[4]
+    const vtpY = vpt[5]
+    const vtpScaleX = vpt[0]
+    const vtpScaleY = vpt[3]
+
+    const targetBounding = target.getBoundingRect()
+    // 排除掉 平移和 缩放功能
+    const left = (targetBounding.left - vtpX) / vtpScaleX
+    const top = (targetBounding.top - vtpY) / vtpScaleY
+    const width = (targetBounding.width) / vtpScaleX
+    const height = (targetBounding.height) / vtpScaleY
+
+    // 计算边界值
+    const { vLines, hLines } = lines
+    // 存放x,y边界坐标
+    const edges = {
+      x: [],
+      y: []
+    }
+    vLines.forEach(line => {
+      // 垂直方向的线，即横着的 有 x0,x1,y
+      const minX = line.x1.toFixed(3) * 1
+      const maxX = line.x2.toFixed(3) * 1
+      const tempY = ((line.y1 + line.y2) / 2).toFixed(3) * 1
+      if (!edges.x.includes(minX)) {
+        edges.x.push(minX)
+      }
+      if (!edges.x.includes(maxX)) {
+        edges.x.push(maxX)
+      }
+      if (!edges.y.includes(tempY)) {
+        edges.y.push(tempY)
+      }
+    })
+    hLines.forEach(line => {
+      // 水平方向的线，即竖着的 有 y0,y1,x
+      const minY = line.y1.toFixed(3) * 1
+      const maxY = line.y2.toFixed(3) * 1
+      const tempX = ((line.x1 + line.x2) / 2).toFixed(3) * 1
+      if (!edges.y.includes(minY)) {
+        edges.y.push(minY)
+      }
+      if (!edges.y.includes(maxY)) {
+        edges.y.push(maxY)
+      }
+      if (!edges.x.includes(tempX)) {
+        edges.x.push(tempX)
+      }
+    })
+    // 计算最小值
+    let accessX = false
+    let accessY = false
+    let minX = {
+      value: gap, // 接近值，默认最大
+      arrow: 'left', // 吸附方向
+      tempX: 0 // 需要吸附的值
+    }
+    let minY = {
+      value: gap, // 接近值，默认最大
+      arrow: 'top', // 吸附方向
+      tempY: 0 // 需要吸附的值
+    }
+    edges.x.forEach(tempX => {
+      // 判断x
+      // 判断左右两个方向
+      const range = [tempX - gap, tempX + gap]
+      // 左边接近
+      if (left >= range[0] && left <= range[1]) {
+        // 判断最小值
+        const accessValue = Math.abs(left - tempX)
+        if (accessValue <= minX.value) {
+          minX = {
+            value: accessValue,
+            arrow: 'left',
+            tempX
+          }
+        }
+        accessX = true
+      }
+      // 右边接近
+      if (left + width >= range[0] && left + width <= range[1]) {
+        const accessValue = Math.abs(left + width - tempX)
+        if (accessValue <= minX.value) {
+          minX = {
+            value: accessValue,
+            arrow: 'right',
+            tempX
+          }
+        }
+        accessX = true
+      }
+    })
+    edges.y.forEach(tempV => {
+      // 判断x
+      // 判断左右两个方向
+      const range = [tempV - gap, tempV + gap]
+      // 左边接近
+      if (top >= range[0] && top <= range[1]) {
+        // 判断最小值
+        const accessValue = Math.abs(top - tempV)
+        if (accessValue <= minY.value) {
+          minY = {
+            value: accessValue,
+            arrow: 'top',
+            accessValue: tempV
+          }
+        }
+        accessY = true
+      }
+      // 右边接近
+      if (top + height >= range[0] && top + height <= range[1]) {
+        const accessValue = Math.abs(top + height - tempV)
+        if (accessValue <= minY.value) {
+          minY = {
+            value: accessValue,
+            arrow: 'bottom',
+            accessValue: tempV
+          }
+        }
+        accessY = true
+      }
+    })
+    if (accessX) {
+      // x方向有吸附
+      const realLeft = minX.arrow === 'left' ? minX.tempX : minX.tempX - targetBounding.width / vtpScaleX
+      target.set({
+        left: realLeft
+      })
+    }
+    if (accessY) {
+      // Y方向有吸附,
+      const realTop = minY.arrow === 'top' ? minY.tempV : minY.tempV - targetBounding.height / vtpScaleY
+      target.set({
+        top: realTop
+      })
+    }
+    target.setCoords()
   }
 }
