@@ -11,6 +11,8 @@
     - [x] 图层
     - [x] 画布平移和缩放
     - [x] 删除功能
+    - [x] 吸附效果
+    - [x] 限制移动区域
 ## Project setup
 ```
 yarn install
