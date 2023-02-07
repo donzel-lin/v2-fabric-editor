@@ -52,7 +52,7 @@ export const FabricUtils = class {
   static init (el, { changeScale }) {
     const canvas = new fabric.Canvas(el, {
       backgroundColor: '#eee',
-      centeredScaling: true
+      selection: false
     })
     const { width, height } = canvas
     this.size = {

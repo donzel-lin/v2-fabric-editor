@@ -2,10 +2,10 @@
     <div class="wrapper">
         <canvas width="800" height="800" id="editor"></canvas>
         <div class="tool-box">
-          <div class="scale-box visible-hidden">
+          <div class="scale-box ">
             <el-slider v-model="scale" @change="setScale" :min="1" :step="0.1" :max="10"></el-slider>
           </div>
-          <div class="visible-hidden">
+          <div class="">
             <span class="left-arrow" @click="add">新增按钮</span>
           <span class="left-arrow" @click="leftStraighten">左对齐</span>
           <span class="left-arrow" @click="topStraighten">上对齐</span>
@@ -16,7 +16,7 @@
           <span class="left-arrow" @click="addImg">添加</span>
           <span class="left-arrow" @click="exportJson">导出</span>
           </div>
-          <div class="section visible-hidden">
+          <div class="section ">
             <span class="text" draggable @dragstart="choseText">文字</span>
             <img
               id="seatImg"
@@ -27,10 +27,10 @@
             >
 
           </div>
-          <div class="visible-hidden">
+          <div class="">
             <span class="left-arrow" @click="drawRect">矩形</span>
           </div>
-          <div class="layer visible-hidden">
+          <div class="layer ">
             <el-input-number
             v-model="layer"
             :min="1" :max="10"
@@ -38,7 +38,7 @@
             />
             <span class="left-arrow" @click="hideLayer">隐藏</span>
           </div>
-          <div class="buttons visible-hidden">
+          <div class="buttons ">
             <el-select v-model="font" @change="setFontfamily" placeholder="请选择">
               <el-option
                 v-for="item in options"
@@ -54,7 +54,7 @@
               :predefine="predefineColors">
             </el-color-picker>
           </div>
-          <div class="visible-hidden">
+          <div class="">
             <el-switch
               @change='setFontWeight'
                 v-model="isBold"
@@ -62,7 +62,7 @@
                 inactive-text="常规">
             </el-switch>
           </div>
-          <div class="rect visible-hidden">
+          <div class="rect">
             <p>矩形</p>
             <el-select v-model="border" @change="setBorder" placeholder="边框">
               <el-option
