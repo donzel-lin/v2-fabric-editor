@@ -1,105 +1,47 @@
 <template>
     <div class="wrapper">
-        <canvas width="800" height="800" id="editor"></canvas>
-        <div class="tool-box">
-          <div class="scale-box ">
-            <el-slider v-model="scale" @change="setScale" :min="1" :step="0.1" :max="10"></el-slider>
+        <div class="left-items h-100">
+          <drag-item />
+        </div>
+        <div class="content">
+          <div class="upper-tool w-100">
+            <ul class="flex align-center">
+              <li
+                v-for="layer in  layers"
+                :key="layer.id"
+                class="m-l-5 m-r-5"
+                :class="{
+                  'is-active': currentLayer && currentLayer.id === layer.id
+                }"
+                @click="setLayer(layer)"
+              >{{ layer.title }}</li>
+            </ul>
           </div>
-          <div class="">
-            <span class="left-arrow" @click="add">新增按钮</span>
-          <span class="left-arrow" @click="leftStraighten">左对齐</span>
-          <span class="left-arrow" @click="topStraighten">上对齐</span>
-          <span class="left-arrow" @click="centerVStraighten">水平居中对齐</span>
-          <span class="left-arrow" @click="cebterHStraighten">垂直居中对齐</span>
-          <span class="left-arrow" @click="bottomStraighten">下对齐</span>
-          <span class="left-arrow" @click="rightStraighten">右对齐</span>
-          <span class="left-arrow" @click="addImg">添加</span>
-          <span class="left-arrow" @click="exportJson">导出</span>
+          <div class="canvas w-100" id="canvasBox">
           </div>
-          <div class="section ">
-            <span class="text" draggable @dragstart="choseText">文字</span>
-            <img
-              id="seatImg"
-              class="seat-img"
-              :src="require('../../assets/logo.png')" alt=""
-              @dragstart="choseImg"
-              @load="afterLoadSeat"
-            >
+        </div>
 
-          </div>
-          <div class="">
-            <span class="left-arrow" @click="drawRect">矩形</span>
-          </div>
-          <div class="layer ">
-            <el-input-number
-            v-model="layer"
-            :min="1" :max="10"
-            @change="setLayerNumber"
-            />
-            <span class="left-arrow" @click="hideLayer">隐藏</span>
-          </div>
-          <div class="buttons ">
-            <el-select v-model="font" @change="setFontfamily" placeholder="请选择">
-              <el-option
-                v-for="item in options"
-                :key="item.value"
-                :label="item.label"
-                :value="item.value">
-              </el-option>
-            </el-select>
-            <el-color-picker
-              v-model="color"
-              @change="setColor"
-              show-alpha
-              :predefine="predefineColors">
-            </el-color-picker>
-          </div>
-          <div class="">
-            <el-switch
-              @change='setFontWeight'
-                v-model="isBold"
-                active-text="加粗"
-                inactive-text="常规">
-            </el-switch>
-          </div>
-          <div class="rect">
-            <p>矩形</p>
-            <el-select v-model="border" @change="setBorder" placeholder="边框">
-              <el-option
-                v-for="item in borderOptions"
-                :key="item.value"
-                :label="item.label"
-                :value="item.value">
-              </el-option>
-            </el-select>
-            <el-color-picker
-              v-model="color"
-              @change="setBorderColor"
-              show-alpha
-              :predefine="predefineColors">
-            </el-color-picker>
-            <div>
-              <span>圆角</span>
-              <el-slider v-model="borderRadius" @change="setRadius" :min="1" :step="1" :max="100"></el-slider>
-            </div>
-          </div>
-          <div class="tools section">
-            <span class="text" draggable @dragstart="choseClockPan">点我</span>
-            <span class="text" draggable @dragstart="choseTimeText">时间文本</span>
-            <span class="text" draggable @dragstart="choseVideo">aaaaaa</span>
-            <span class="left-arrow" draggable @click="exportImage">导出</span>
-          </div>
-          <div class="video-box">
-            <video width="400" height="300" id="video" src="/videos/dizzy.mp4"></video>
-          </div>
-          <span class="left-arrow" @click="test">测试</span>
+        <div class="right-properties p-r-10 h-100">
+          <template v-if="targetObj">
+            <location-and-size :location="targetLocation"/>
+            <z-index :z-index="zIndex" />
+          </template>
         </div>
     </div>
 </template>
 <script>
-import { FabricUtils } from './utils'
+import { listenerTypes } from './Listener'
+import Editor from './Editor'
+import DragItem from './components/DragItem.vue'
+import LocationAndSize from './components/LocationAndSize.vue'
+import ZIndex from './components/Zindex.vue'
 export default {
   name: 'Editor',
+  components: {
+    DragItem,
+    LocationAndSize,
+    ZIndex
+  },
   data () {
     return {
       scale: 1,
@@ -155,7 +97,29 @@ export default {
       isBold: false,
       // 矩形
       border: 2,
-      borderRadius: 1
+      borderRadius: 1,
+      // 编辑器
+      editor: null,
+      targetObj: null,
+      layers: [
+        {
+          id: 1,
+          title: 'layer1'
+        },
+        {
+          id: 2,
+          title: 'layer2'
+        },
+        {
+          id: 3,
+          title: 'layer3'
+        },
+        {
+          id: 4,
+          title: 'layer4'
+        }
+      ],
+      zIndex: 1 // 当前物体的层级
     }
   },
   computed: {
@@ -170,130 +134,45 @@ export default {
       }, [])
 
       return options
+    },
+    currentLayer () {
+      return this.editor && this.editor.layer
+    },
+    targetLocation () {
+      return this.targetObj && {
+        x: this.targetObj.left,
+        y: this.targetObj.top,
+        w: this.targetObj.width,
+        h: this.targetObj.height
+      }
     }
-
   },
   mounted () {
     this.init()
   },
   methods: {
     init () {
-      FabricUtils.init('editor', {
-        changeScale: (scale) => {
-          this.scale = scale
-        }
+      this.editor = new Editor('canvasBox', {
+        layers: this.layers,
+        canvas: {}
       })
-      // const group = FabricUtils.createDropdown(1, canvas)
-      // const textBox1 = FabricUtils.createEditableText({ text: 'aaa' })
-      // const textBox12 = FabricUtils.createEditableText({ text: 'bbb' })
-      // canvas.add(group)
-      // canvas.add(textBox1)
-      // canvas.add(textBox12)
+      // 处理监听时间
+      this.editor.listener.on(listenerTypes.SELECT_OBJECT, this.selectObject)
     },
-    afterLoadSeat () {
-      // FabricUtils.creatSeatWithLable()
+    selectObject (data) {
+      console.log(data, 'selectObject')
+      this.targetObj = data[0]
     },
-    add () {
-      const textBox = FabricUtils.createEditableText({ text: 'cccccc' })
-      FabricUtils.addToCanvas(textBox)
+    setLayer (layer) {
+      this.editor.set({
+        layer
+      })
     },
-    leftStraighten () {
-      FabricUtils.align('left')
-    },
-    topStraighten () {
-      FabricUtils.align('top')
-    },
-    centerVStraighten () {
-      FabricUtils.align('centerV')
-    },
-    cebterHStraighten () {
-      FabricUtils.align('centerH')
-    },
-    bottomStraighten () {
-      FabricUtils.align('bottom')
-    },
-    rightStraighten () {
-      FabricUtils.align('right')
-    },
-    setScale () {
-      FabricUtils.canvas.setZoom(this.scale)
-    },
-    addImg () {
-      FabricUtils.creatSeatWithLable()
-    },
-    exportJson () {
-      const aaa = FabricUtils.canvas.toJSON()
-      console.log(aaa, 'aaa', FabricUtils.canvas)
-    },
-    // 拖拽生成文字
-    choseText (e) {
-      e.dataTransfer.setData('data', JSON.stringify({
-        type: 'text'
-      }))
-    },
-    // 拖拽生成图片
-    choseImg (e) {
-      e.dataTransfer.setData('data', JSON.stringify({
-        type: 'img',
-        el: 'seatImg'
-      }))
-    },
-    drawRect () {
-      FabricUtils.drawRect()
-    },
-    setLayerNumber () {
-      FabricUtils.setLayerNumber(this.layer)
-    },
-    hideLayer () {
-      FabricUtils.hideLayerObjects(2)
-    },
-    setFontfamily () {
-      this.setFont('fontFamily', this.font)
-    },
-    setColor () {
-      this.setFont('fill', this.color)
-    },
-    setFont (key, value) {
-      FabricUtils.setFont(key, value)
-    },
-    setFontWeight () {
-      FabricUtils.setFont('fontWeight', this.isBold ? 'bold' : 'normal')
-    },
-    setBorder () {
-      FabricUtils.setBorder('strokeWidth', this.border)
-    },
-    setBorderColor () {
-      FabricUtils.setBorder('stroke', this.color)
-    },
-    setRadius () {
-      FabricUtils.setRadius('radius', this.borderRadius)
-    },
-    // 生成 表盘
-    choseClockPan (e) {
-      e.dataTransfer.setData('data', JSON.stringify({
-        type: 'clock'
-      }))
-    },
-    choseTimeText (e) {
-      e.dataTransfer.setData('data', JSON.stringify({
-        type: 'timeText'
-      }))
-    },
-    choseVideo (e) {
-      e.dataTransfer.setData('data', JSON.stringify({
-        type: 'video',
-        el: 'video'
-      }))
-    },
-    exportImage () {
-      FabricUtils.export()
-    },
-    test () {
-      FabricUtils.test()
+    setZindex (zIndex) { // 处理层级
+      this.zIndex = zIndex
     }
   },
   beforeDestroy () {
-    FabricUtils.destory()
   }
 }
 </script>
@@ -303,13 +182,23 @@ export default {
   height: 100%;
   display: flex;
   justify-content: space-between;
-  .tool-box {
-    flex: 1;
-    height: 100%;
-    background-color: #fff;
-    border: 1px solid #eee;
+  .left-items {
+    width: 130px;
+  }
+  .right-properties {
+    width: 230px;
+  }
+  .content {
+    width: calc(100vw - 360px);
+    .upper-tool{
+      height: 60px;
+    }
+    .canvas{
+      height: calc(100% - 60px);
+    }
   }
 }
+
 .tool-box {
   .left-arrow{
     font-size: 12px;
@@ -330,17 +219,6 @@ export default {
   width: 50px;
   height: 50px;
   // visibility: hidden;
-}
-.section {
-  .text {
-    display: inline-block;
-    width: 100px;
-    height: 30px;
-    line-height: 30px;
-    background-color: #eee;
-    border: 1px solid #eee;
-    border-radius: 2px;
-  }
 }
 .video-box {
     video {

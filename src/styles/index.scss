@@ -11,8 +11,12 @@ html, body, #app {
 .body {
     height: calc(100% - 78px);
 }
+ul, li {
+    list-style: none;
+}
 
-.canvas-container {
-    width: 1000px;
-    height: 800px;
+
+// element-ui
+.number-input {
+    
 }

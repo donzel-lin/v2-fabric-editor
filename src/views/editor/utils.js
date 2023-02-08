@@ -430,6 +430,7 @@ export const FabricUtils = class {
       }
     })
     textBox.on('editing:entered', () => this.handleEnterEditing(textBox))
+    textBox.on('modified', () => this.changeTextSize(textBox))
     const { tText, hasClip } = this.clipText(textBox.text, width)
     const { customData } = textBox
     const orginalText = textBox.text
@@ -448,6 +449,21 @@ export const FabricUtils = class {
       this.canvas.add(textBox)
     }
     return textBox
+  }
+
+  static changeTextSize (textBox) {
+    const { tText, hasClip } = this.clipText(textBox.customData.text, textBox.width)
+    const { customData } = textBox
+    const orginalText = textBox.customData.text
+    if (hasClip) {
+      textBox
+        .set('customData', {
+          ...customData,
+          text: orginalText,
+          style: this.textStyle
+        })
+        .set('text', tText)
+    }
   }
 
   // 编辑时
@@ -474,6 +490,7 @@ export const FabricUtils = class {
     }
     newText.on('editing:entered', () => this.handleEnterEditing(newText))
     newText.on('editing:exited', exitFn)
+    newText.on('modified', () => this.changeTextSize(newText))
   }
 
   // 将obj 添加到 canvas
