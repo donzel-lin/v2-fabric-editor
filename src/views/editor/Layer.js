@@ -19,3 +19,18 @@ export default class Layer {
     }
   }
 }
+
+export class ZIndex {
+  constructor () {
+    this.value = 0
+  }
+
+  set (value) {
+    this.value = value
+  }
+
+  add (target) {
+    this.value++
+    target.set('zIndex', this.value)
+  }
+}

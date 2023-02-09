@@ -4,15 +4,16 @@ const defaultProperty = {
   fontFamily: 'SimSun',
   color: '#000',
   fontWeight: 'normal', // normal ,bold
-  align: 'center',
+  textAlign: 'center',
   borderWidth: 2,
   borderColor: '#000',
   borderRadius: 0,
-  fill: '#fff'
+  fill: '#fff',
+  backgroundColor: '#fff'
 }
 // 每种type对应的默认样式，其实都会保存到 customData中去
 const styleMap = {
-  text: ['fontSize', 'fontFamily', 'color', 'fontWeight', 'align'],
+  text: ['fontSize', 'fontFamily', 'color', 'fontWeight', 'textAlign', 'backgroundColor'],
   rect: ['borderWidth', 'borderColor', 'borderRadius', 'fill'],
   variable: ['fontSize', 'fontFamily', 'color', 'fontWeight', 'align'],
   clock: ['pan', 'hour', 'minute', 'second']

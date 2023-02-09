@@ -1,6 +1,6 @@
 import { fabric } from 'fabric'
 import Listener, { listenerTypes } from './Listener'
-import Layer from './Layer'
+import Layer, { ZIndex } from './Layer'
 import short from 'short-uuid'
 import defaultStyles from './styles'
 import objectTypes from './types'
@@ -10,6 +10,16 @@ const canvasOptions = {
 }
 export default class Editor {
   constructor (el, options) {
+    this.lastScale = { // 缩放时的位置信息
+      width: 0,
+      height: 0,
+      left: 0,
+      top: 0,
+      scaleX: 0,
+      scaleY: 0
+    }
+    this.limitRect = null
+    this.zIndex = new ZIndex() // 新增时可能需要用到这个
     this.listener = new Listener()
     this.layers = (options && options.layers) || []
     this.layer = new Layer(this.layers[0])
@@ -20,8 +30,15 @@ export default class Editor {
 
   init () {
     this.initDom()
+    this.initPan()
+    this.initZoom()
     this.initDropEvents()
-    // this.initMoving()
+    // 物体移动
+    this.initMoving()
+
+    // 缩放
+    this.initScaling()
+    this.initResizing()
     this.initModified()
     this.initSelection()
   }
@@ -50,14 +67,99 @@ export default class Editor {
       ...this.editorOptions,
       selection: false // 单个选中
     })
+    // 初始化 限制区域
+    this.initLimtRect({ x: 0, y: 0, w: width, h: height })
+  }
+
+  // 平移功能
+  initPan () {
+    this.canvas.on('mouse:down', function (opt) {
+      const evt = opt.e
+      if (evt.altKey === true) {
+        this.isDragging = true
+        this.lastPosX = evt.clientX
+        this.lastPosY = evt.clientY
+      }
+    })
+    this.canvas.on('mouse:move', function (opt) {
+      if (this.isDragging) {
+        const e = opt.e
+        const vpt = this.viewportTransform
+        vpt[4] += e.clientX - this.lastPosX
+        vpt[5] += e.clientY - this.lastPosY
+        this.requestRenderAll()
+        this.lastPosX = e.clientX
+        this.lastPosY = e.clientY
+      }
+    })
+    this.canvas.on('mouse:up', function (opt) {
+      // on mouse up we want to recalculate new interaction
+      // for all objects, so we call setViewportTransform
+      this.setViewportTransform(this.viewportTransform)
+      this.isDragging = false
+    })
+  }
+
+  // 缩放功能
+  initZoom (changeScale) {
+    this.canvas.on('mouse:wheel', function (opt) {
+      var delta = opt.e.deltaY
+      var zoom = this.getZoom()
+      zoom *= 0.999 ** delta
+      if (zoom > 20) zoom = 20
+      if (zoom < 0.01) zoom = 0.01
+      this.setZoom(zoom)
+      // this.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom)
+      opt.e.preventDefault()
+      opt.e.stopPropagation()
+      if (changeScale) {
+        changeScale(zoom)
+      }
+    })
+  }
+
+  // 限制移动区域
+  initLimtRect ({ x = 0, y = 0, w, h, styles }) {
+    const rect = new fabric.Rect({
+      left: x,
+      top: y,
+      width: w || this.canvas.width,
+      height: h || this.canvas.height,
+      fill: '#e9e9e9',
+      strokeWidth: 0,
+      zIndex: -1,
+      hasBorders: false,
+      hasControls: false,
+      selectable: false
+    })
+    // 此处添加到canvas，不计算图层
+    this.canvas.add(rect)
+    this.limitRect = rect
   }
 
   // 处理移动
-  // initMoving () {
-  // this.canvas.on('object:modified', e => {
-  //   console.log(e.target, e, 'e')
-  // })
-  // }
+  initMoving () {
+    let limitRect = this.limitRect
+    function calcMinValue (num, min, max) {
+      return Math.min(Math.max(num, min), max)
+    }
+    this.canvas.on('object:moving', e => {
+      const target = e.target
+      if (target.limitParent) { // 如果元素设置了 限制父级，那么就是在这个元素内
+        limitRect = target.limitParent
+      }
+      target.setCoords()
+      const limitBounding = limitRect.getBoundingRect()
+      const targetBounding = target.getBoundingRect()
+      const viewportTransform = this.canvas.viewportTransform
+      const loc = {
+        left: (calcMinValue(targetBounding.left, limitBounding.left, limitBounding.left + limitBounding.width - targetBounding.width) - viewportTransform[4]) / viewportTransform[0],
+        top: (calcMinValue(targetBounding.top, limitBounding.top, limitBounding.top + limitBounding.height - targetBounding.height) - viewportTransform[5]) / viewportTransform[0]
+      }
+      target.set(loc)
+    })
+  }
+
   // 处理modified事件
   initModified () {
     this.canvas.on('mouse:down', e => {
@@ -66,7 +168,7 @@ export default class Editor {
     this.canvas.on('object:modified', e => {
       const action = e.action
       if (this[`${action}Handler`]) {
-        // resizingHandler
+        // resizingHandler, dragHandler
         this[`${action}Handler`](e.target)
       }
     })
@@ -82,6 +184,7 @@ export default class Editor {
     })
   }
 
+  // resize
   resizingHandler (target) {
     console.log(target.get('type'), 'target')
     const type = target.get('type')
@@ -92,8 +195,250 @@ export default class Editor {
     }
   }
 
+  // drag 移动时的modified
+  dragHandler (target) {
+    // this.snapTest(target, [], limitRect, canvas)
+    // 更新 scaling中的loc, 不然在边界时会跳跃
+    this.lastScale.left = target.left
+    this.lastScale.top = target.top
+  }
+
+  // 处理物体缩放边界问题
+  initScaling () {
+    let limitRect = this.limitRect
+    this.canvas.on('object:scaling', e => {
+      const target = e.target
+      if (target.limitParent) {
+        limitRect = target.limitParent
+      }
+      target.setCoords()
+      const targetBounding = target.getBoundingRect()
+      const limitBounding = limitRect.getBoundingRect()
+
+      function isExceedBound (targetBounding, limitBounding) {
+        if (
+          targetBounding.left < limitBounding.left ||
+          targetBounding.top < limitBounding.top ||
+          targetBounding.left + targetBounding.width > limitBounding.left + limitBounding.width ||
+          targetBounding.top + targetBounding.height > limitBounding.top + limitBounding.height
+        ) {
+          return true
+        }
+        return false
+      }
+      console.log(this.lastScale, 'asdf', targetBounding, limitBounding)
+      if (isExceedBound(targetBounding, limitBounding)) {
+        // 有超出部分
+        target.set({
+          ...this.lastScale
+        })
+      } else {
+        // 未超出边界
+        this.lastScale = {
+          width: target.width,
+          height: target.height,
+          left: target.left,
+          top: target.top,
+          scaleX: target.scaleX,
+          scaleY: target.scaleY
+        }
+      }
+    })
+  }
+
+  // 文字resizing 边界问题
+  initResizing () {
+    // textbox文字只触发了 垂直方向上的scaling,水平方向上不触发
+    let limitRect = this.limitRect
+    this.canvas.on('object:resizing', e => {
+      const target = e.target
+      if (target.limitParent) {
+        limitRect = target.limitParent
+      }
+      target.setCoords()
+      const targetBounding = target.getBoundingRect()
+      const limitBounding = limitRect.getBoundingRect()
+      function isExceedBound (targetBounding, limitBounding) {
+        if (
+          targetBounding.left < limitBounding.left ||
+          targetBounding.top < limitBounding.top ||
+          targetBounding.left + targetBounding.width > limitBounding.left + limitBounding.width ||
+          targetBounding.top + targetBounding.height > limitBounding.top + limitBounding.height
+        ) {
+          return true
+        }
+        return false
+      }
+      if (isExceedBound(targetBounding, limitBounding)) {
+        // 有超出部分
+        target.set({
+          width: this.lastScale.width,
+          height: this.lastScale.height,
+          left: this.lastScale.left,
+          top: this.lastScale.top
+        })
+        // 文字还得做其他处理，resize后，编辑，再resize文本恢复了
+      } else {
+        // 未超出边界
+        this.lastScale = {
+          ...this.lastScale,
+          width: target.width,
+          height: target.height,
+          left: target.left,
+          top: target.top
+        }
+      }
+    })
+  }
+
+  // lines 边界线
+  snapTest (target, lines, gap = 10) {
+    // 看需不需要吸附线及效果
+    const vpt = this.canvas.viewportTransform
+    const vtpX = vpt[4]
+    const vtpY = vpt[5]
+    const vtpScaleX = vpt[0]
+    const vtpScaleY = vpt[3]
+
+    const targetBounding = target.getBoundingRect()
+    // 排除掉 平移和 缩放功能
+    const left = (targetBounding.left - vtpX) / vtpScaleX
+    const top = (targetBounding.top - vtpY) / vtpScaleY
+    const width = (targetBounding.width) / vtpScaleX
+    const height = (targetBounding.height) / vtpScaleY
+
+    // 计算边界值
+    const { vLines, hLines } = lines
+    // 存放x,y边界坐标
+    const edges = {
+      x: [],
+      y: []
+    }
+    vLines.forEach(line => {
+      // 垂直方向的线，即横着的 有 x0,x1,y
+      const minX = line.x1.toFixed(3) * 1
+      const maxX = line.x2.toFixed(3) * 1
+      const tempY = ((line.y1 + line.y2) / 2).toFixed(3) * 1
+      if (!edges.x.includes(minX)) {
+        edges.x.push(minX)
+      }
+      if (!edges.x.includes(maxX)) {
+        edges.x.push(maxX)
+      }
+      if (!edges.y.includes(tempY)) {
+        edges.y.push(tempY)
+      }
+    })
+    hLines.forEach(line => {
+      // 水平方向的线，即竖着的 有 y0,y1,x
+      const minY = line.y1.toFixed(3) * 1
+      const maxY = line.y2.toFixed(3) * 1
+      const tempX = ((line.x1 + line.x2) / 2).toFixed(3) * 1
+      if (!edges.y.includes(minY)) {
+        edges.y.push(minY)
+      }
+      if (!edges.y.includes(maxY)) {
+        edges.y.push(maxY)
+      }
+      if (!edges.x.includes(tempX)) {
+        edges.x.push(tempX)
+      }
+    })
+    // 计算最小值
+    let accessX = false
+    let accessY = false
+    let minX = {
+      value: gap, // 接近值，默认最大
+      arrow: 'left', // 吸附方向
+      tempX: 0 // 需要吸附的值
+    }
+    let minY = {
+      value: gap, // 接近值，默认最大
+      arrow: 'top', // 吸附方向
+      tempY: 0 // 需要吸附的值
+    }
+    edges.x.forEach(tempX => {
+      // 判断x
+      // 判断左右两个方向
+      const range = [tempX - gap, tempX + gap]
+      // 左边接近
+      if (left >= range[0] && left <= range[1]) {
+        // 判断最小值
+        const accessValue = Math.abs(left - tempX)
+        if (accessValue <= minX.value) {
+          minX = {
+            value: accessValue,
+            arrow: 'left',
+            tempX
+          }
+        }
+        accessX = true
+      }
+      // 右边接近
+      if (left + width >= range[0] && left + width <= range[1]) {
+        const accessValue = Math.abs(left + width - tempX)
+        if (accessValue <= minX.value) {
+          minX = {
+            value: accessValue,
+            arrow: 'right',
+            tempX
+          }
+        }
+        accessX = true
+      }
+    })
+    edges.y.forEach(tempV => {
+      // 判断x
+      // 判断左右两个方向
+      const range = [tempV - gap, tempV + gap]
+      // 左边接近
+      if (top >= range[0] && top <= range[1]) {
+        // 判断最小值
+        const accessValue = Math.abs(top - tempV)
+        if (accessValue <= minY.value) {
+          minY = {
+            value: accessValue,
+            arrow: 'top',
+            accessValue: tempV
+          }
+        }
+        accessY = true
+      }
+      // 右边接近
+      if (top + height >= range[0] && top + height <= range[1]) {
+        const accessValue = Math.abs(top + height - tempV)
+        if (accessValue <= minY.value) {
+          minY = {
+            value: accessValue,
+            arrow: 'bottom',
+            accessValue: tempV
+          }
+        }
+        accessY = true
+      }
+    })
+    if (accessX) {
+      // x方向有吸附
+      const realLeft = minX.arrow === 'left' ? minX.tempX : minX.tempX - targetBounding.width / vtpScaleX
+      target.set({
+        left: realLeft
+      })
+    }
+    if (accessY) {
+      // Y方向有吸附,
+      const realTop = minY.arrow === 'top' ? minY.tempV : minY.tempV - targetBounding.height / vtpScaleY
+      target.set({
+        top: realTop
+      })
+    }
+    target.setCoords()
+  }
+
   // 添加物体
   add (obj, layer) {
+    if (!obj.zIndex) { // 如果物体没有zIndex才去新增
+      this.zIndex.add(obj)
+    }
     const id = uid()
     obj.set('id', id)
     this.canvas.add(obj)
@@ -122,7 +467,9 @@ export default class Editor {
   // 选中物体时，将其信息返回出去
   selectObject () {
     const objs = this.canvas.getActiveObjects()
-    console.log(objs, 'objs')
+    if (objs.length) {
+      this.zIndex.set(objs[0].zIndex)
+    }
     // 将样式信息发送出去
     this.listener.triggle(listenerTypes.SELECT_OBJECT, objs)
     return objs
@@ -199,7 +546,8 @@ export default class Editor {
       top,
       layer: this.layer,
       ...style,
-      customData
+      customData,
+      zIndex: textBox.zIndex
     })
     this.add(newText)
     this.canvas.setActiveObject(newText)
@@ -289,6 +637,25 @@ export default class Editor {
         .set('width', maxWidth)
     }
     target.setCoords()
+    this.renderAll()
+  }
+
+  // 修改层级，区别于图层，控制 objects的顺序的
+  changeZIndex () {
+    // 找到当前激活的目标，修改其层级， 根据其zIndex来排序
+    const activeObj = this.canvas.getActiveObject()
+    if (activeObj) {
+      activeObj.set('zIndex', this.zIndex.value)
+      this.moveObj(activeObj)
+    }
+  }
+
+  // 切换物体的层级
+  moveObj (target) { // 切换层级
+    const objs = this.canvas.getObjects()
+    const sortObjects = objs.sort((a, b) => a.zIndex - b.zIndex)
+    const index = sortObjects.findIndex(x => x.id === target.id)
+    target.moveTo(index)
     this.renderAll()
   }
 

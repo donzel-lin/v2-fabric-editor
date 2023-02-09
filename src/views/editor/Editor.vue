@@ -24,7 +24,10 @@
         <div class="right-properties p-r-10 h-100">
           <template v-if="targetObj">
             <location-and-size :location="targetLocation"/>
-            <z-index :z-index="zIndex" />
+            <z-index
+              :z-index.sync="currentZIndex.value"
+              @changeZindex="changeZindex"
+            />
           </template>
         </div>
     </div>
@@ -118,8 +121,7 @@ export default {
           id: 4,
           title: 'layer4'
         }
-      ],
-      zIndex: 1 // 当前物体的层级
+      ]
     }
   },
   computed: {
@@ -137,6 +139,9 @@ export default {
     },
     currentLayer () {
       return this.editor && this.editor.layer
+    },
+    currentZIndex () {
+      return this.editor && this.editor.zIndex
     },
     targetLocation () {
       return this.targetObj && {
@@ -160,7 +165,6 @@ export default {
       this.editor.listener.on(listenerTypes.SELECT_OBJECT, this.selectObject)
     },
     selectObject (data) {
-      console.log(data, 'selectObject')
       this.targetObj = data[0]
     },
     setLayer (layer) {
@@ -168,8 +172,10 @@ export default {
         layer
       })
     },
-    setZindex (zIndex) { // 处理层级
-      this.zIndex = zIndex
+    changeZindex () {
+      // 组件修改 层级
+      // 如果有选中的目标，那么也需要将其 层级修改掉
+      this.editor.changeZIndex()
     }
   },
   beforeDestroy () {

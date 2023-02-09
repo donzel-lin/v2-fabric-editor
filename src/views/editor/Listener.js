@@ -1,5 +1,6 @@
 export const listenerTypes = {
-  SELECT_OBJECT: 'selectObject'
+  SELECT_OBJECT: 'selectObject',
+  ADD_Z_INDEX: 'addZIndex'
 }
 
 export default class Listener {
@@ -29,7 +30,7 @@ export default class Listener {
     if (events.includes(cb)) {
       const index = events.findIndex(x => x === cb)
       if (index > -1) { // 如果有,那么就删掉
-        const newEvents = events.splice(index, 1, 0)
+        const newEvents = events.splice(index, 1)
         this.events.set(type, newEvents)
       }
     }
