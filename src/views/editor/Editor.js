@@ -1,4 +1,6 @@
 import { fabric } from 'fabric'
+import { handleChangeDisplay } from './utils'
+import { cDayjs } from './time'
 import Listener, { listenerTypes } from './Listener'
 import Layer, { ZIndex } from './Layer'
 import short from 'short-uuid'
@@ -6,10 +8,15 @@ import defaultStyles from './styles'
 import objectTypes from './types'
 const uid = short().generate
 const canvasOptions = {
-  backgroundColor: '#eee'
+  backgroundColor: 'rgb(96,125,175)',
+  border: 'rgb(204,204,204)'
 }
 export default class Editor {
   constructor (el, options) {
+    this.display = {
+      x: 1920,
+      y: 1080
+    }
     this.lastScale = { // 缩放时的位置信息
       width: 0,
       height: 0,
@@ -18,6 +25,11 @@ export default class Editor {
       scaleX: 0,
       scaleY: 0
     }
+    // 时钟属性
+    this.clocks = {
+      tick: 10
+    }
+    this.clockTimer = null
     this.limitRect = null
     this.zIndex = new ZIndex() // 新增时可能需要用到这个
     this.listener = new Listener()
@@ -25,6 +37,7 @@ export default class Editor {
     this.layer = new Layer(this.layers[0])
     this.el = el
     this.editorOptions = Object.assign({}, canvasOptions, (options && options.canvas) || {})
+
     this.init()
   }
 
@@ -41,6 +54,8 @@ export default class Editor {
     this.initResizing()
     this.initModified()
     this.initSelection()
+    // 删除操作
+    this.initDeleteEvent()
   }
 
   initDom () {
@@ -59,7 +74,7 @@ export default class Editor {
     const { width, height } = elDom.getBoundingClientRect()
     const canvas = document.createElement('canvas')
     canvas.width = width
-    canvas.height = height
+    canvas.height = height - 30
     canvas.id = 'canvas'
     elDom.append(canvas)
     this.canvasDom = canvas
@@ -68,7 +83,19 @@ export default class Editor {
       selection: false // 单个选中
     })
     // 初始化 限制区域
+    this.getLimitParentScale()
     this.initLimtRect({ x: 0, y: 0, w: width, h: height })
+  }
+
+  // 求取 limis parent的缩放比例
+  getLimitParentScale () {
+    const { width, height } = this.canvas
+    const { x, y } = this.display
+    const vScale = width / x
+    const hScale = height / y
+    const scale = Math.min(vScale, hScale)
+    // 可以算出
+    this.canvas.setZoom(scale)
   }
 
   // 平移功能
@@ -120,12 +147,14 @@ export default class Editor {
 
   // 限制移动区域
   initLimtRect ({ x = 0, y = 0, w, h, styles }) {
+    // 实际是需要根据分辨率来调整的，但是很有可能分辨率达不到那么大
+
     const rect = new fabric.Rect({
       left: x,
       top: y,
-      width: w || this.canvas.width,
-      height: h || this.canvas.height,
-      fill: '#e9e9e9',
+      width: this.display.x,
+      height: this.display.y,
+      fill: 'rgb(204,204,204)',
       strokeWidth: 0,
       zIndex: -1,
       hasBorders: false,
@@ -135,6 +164,27 @@ export default class Editor {
     // 此处添加到canvas，不计算图层
     this.canvas.add(rect)
     this.limitRect = rect
+  }
+
+  // 分辨率被修改
+  changeDisplay ({ value }) {
+    const values = value.replace(/\s+/g, '').split('*')
+    this.display = {
+      x: values[0] * 1,
+      y: values[1] * 1
+    }
+    this.getLimitParentScale()
+    // 重新设置limitRect的大小，都是分辨率的实际大小，但是位置没有居中？
+    this.limitRect.set({
+      height: this.display.y,
+      width: this.display.x
+    })
+    this.limitRect.setCoords()
+    // 需要重新计算所有元素的位置？
+    // 需要处理边界情况
+    const objs = this.canvas.getObjects()
+    handleChangeDisplay(objs, this)
+    this.renderAll()
   }
 
   // 处理移动
@@ -172,6 +222,15 @@ export default class Editor {
         this[`${action}Handler`](e.target)
       }
     })
+  }
+
+  // 处理 按键delete
+  initDeleteEvent () {
+    document.onkeydown = e => {
+      if (e.keyCode === 46) { // 删除激活的物体
+        this.deleteActiveObjects()
+      }
+    }
   }
 
   // 处理选中，默认只能选中一个
@@ -450,9 +509,17 @@ export default class Editor {
   }
 
   // 移除物体
-  remove (obj) {
-    this.canvas.remove(obj)
-    obj.layer.remove(obj)
+  remove (objs) {
+    let temp = null
+    if (Array.isArray(objs)) {
+      temp = objs
+    } else {
+      temp = [objs]
+    }
+    this.canvas.remove(...temp)
+    temp.forEach(obj => {
+      obj.layer.remove(obj)
+    })
   }
 
   // 给canvas设置属性
@@ -464,9 +531,16 @@ export default class Editor {
     // 然后可能需要更新某些内容
   }
 
+  // 删除选中的物体
+  deleteActiveObjects () {
+    const objs = this.canvas.getActiveObjects()
+    this.remove(objs)
+  }
+
   // 选中物体时，将其信息返回出去
   selectObject () {
     const objs = this.canvas.getActiveObjects()
+    console.log(objs, 'objs')
     if (objs.length) {
       this.zIndex.set(objs[0].zIndex)
     }
@@ -640,6 +714,116 @@ export default class Editor {
     this.renderAll()
   }
 
+  // 时间表盘
+  createClockPan ({ left, top }) {
+    // 时间表盘
+    // 1. 表盘
+    const radius = 150
+    const circlePanel = new fabric.Circle({
+      // 默认宽高
+      left,
+      top,
+      backgroundColor: 'transparent',
+      stroke: '#000',
+      strokeDashArray: [5, 2],
+      fill: '#fff',
+      strokeWidth: 2,
+      radius
+    })
+    // 刻度
+    // 小时，逢 5 变长
+    const hourTicks = []
+    for (let i = 0; i < 60; i++) {
+      const tick = {
+        angel: i * 6, // deg
+        rotation: Math.PI / 180 * i * 6,
+        tick: i % 5 === 0 ? 2 * this.clocks.tick : this.clocks.tick
+      }
+      const x = radius * Math.sin(tick.rotation) + left + radius - 3 / 2
+      const y = radius * Math.cos(tick.rotation) + top + radius
+      const tickIns = new fabric.Rect({
+        centeredRotation: false,
+        fill: '#000',
+        width: 3,
+        left: x,
+        top: y,
+        height: tick.tick
+      })
+      // 旋转是逆时针的
+      tickIns.rotate(180 - tick.angel)
+      hourTicks.push(tickIns)
+    }
+    // 时分秒指针
+    const getAngelAndTick = (type) => {
+      let angel = 0
+      let tick = 80
+      if (type === 'hour') {
+        const hour = cDayjs().hour()
+        const minute = cDayjs().minute()
+        const second = cDayjs().second()
+        angel = (hour + minute / 60 + second / 3600) * 30
+      } else if (type === 'minute') {
+        const minute = cDayjs().minute()
+        const second = cDayjs().second()
+        angel = (minute + second / 60) * 6
+        tick = 1.2 * tick
+      } else if (type === 'second') {
+        const second = cDayjs().second()
+        angel = second * 6
+        tick = tick * 1.5
+      }
+      return {
+        angel: Math.ceil(angel), tick
+      }
+    }
+    const getPoint = (type) => {
+      const { tick, angel } = getAngelAndTick(type)
+      const fTick = new fabric.Rect({
+        centeredRotation: false,
+        fill: '#000',
+        width: 4,
+        height: tick,
+        left: left + radius - 2,
+        top: top + radius,
+        customData: {
+          key: 'time-pointer',
+          type: `${type}-pointer`,
+          angel
+        }
+      })
+      fTick.rotate(180 + angel)
+      return fTick
+    }
+    const generateTick = () => {
+      const fHourTick = getPoint('hour')
+      const fMinuteTick = getPoint('minute')
+      const fSecondTick = getPoint('second')
+      return {
+        fHourTick,
+        fMinuteTick,
+        fSecondTick
+      }
+    }
+    const { fHourTick, fMinuteTick, fSecondTick } = generateTick()
+    const group = new fabric.Group([circlePanel, ...hourTicks, fHourTick, fMinuteTick, fSecondTick])
+    // 更新指针位置
+    const movePointTimeFn = () => {
+      const hourAngelAndTick = getAngelAndTick('hour')
+      const minuteAngelAndTick = getAngelAndTick('minute')
+      const secondAngelAndTick = getAngelAndTick('second')
+      // 在原来的基础上做处理
+      // 旧值 originalSecondAngel.angel, 新值secondAngelAndTick.angel
+      fSecondTick.rotate(180 + secondAngelAndTick.angel)
+      fHourTick.rotate(180 + hourAngelAndTick.angel)
+      fMinuteTick.rotate(180 + minuteAngelAndTick.angel)
+      this.renderAll()
+    }
+    this.add(group)
+    this.clockTimer = setInterval(() => {
+      movePointTimeFn()
+    }, 1000)
+  }
+
   // 修改层级，区别于图层，控制 objects的顺序的
   changeZIndex () {
     // 找到当前激活的目标，修改其层级， 根据其zIndex来排序
@@ -662,5 +846,12 @@ export default class Editor {
   // canvas更新
   renderAll () {
     this.canvas.renderAll()
+  }
+
+  // 销毁
+  dispose () {
+    // 销毁canvas
+    this.canvas.dispose()
+    document.onkeydown = null
   }
 }

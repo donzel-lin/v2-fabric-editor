@@ -1,4 +1,3 @@
-import { emptyObject } from '../../../../../../lg-stage1-homework/part3/fed-e-task-03-02/vue-source/vue/src/shared/util';
 <template>
     <div>
         <ul>
@@ -65,7 +64,6 @@ export default {
   methods: {
     dragItem (item) {
       const evt = window.event
-      console.log(item, 'item')
       evt.dataTransfer.setData('data', JSON.stringify(item))
     }
   }

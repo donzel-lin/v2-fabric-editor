@@ -96,7 +96,7 @@
     </div>
 </template>
 <script>
-import { FabricUtils } from './utils'
+import { FabricUtils } from './utils1'
 export default {
   name: 'Editor',
   data () {

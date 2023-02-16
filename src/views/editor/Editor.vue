@@ -16,6 +16,11 @@
                 @click="setLayer(layer)"
               >{{ layer.title }}</li>
             </ul>
+            <!-- 分辨率 -->
+            <display-setting
+              :display.sync="currentDisplay"
+              @change="setDisplay"
+            />
           </div>
           <div class="canvas w-100" id="canvasBox">
           </div>
@@ -36,6 +41,7 @@
 import { listenerTypes } from './Listener'
 import Editor from './Editor'
 import DragItem from './components/DragItem.vue'
+import DisplaySetting from './components/DisplaySetting.vue'
 import LocationAndSize from './components/LocationAndSize.vue'
 import ZIndex from './components/Zindex.vue'
 export default {
@@ -43,7 +49,8 @@ export default {
   components: {
     DragItem,
     LocationAndSize,
-    ZIndex
+    ZIndex,
+    DisplaySetting
   },
   data () {
     return {
@@ -121,7 +128,8 @@ export default {
           id: 4,
           title: 'layer4'
         }
-      ]
+      ],
+      currentDisplay: 1 // 当前分辨率
     }
   },
   computed: {
@@ -172,6 +180,13 @@ export default {
         layer
       })
     },
+    // 修改了分辨率
+    setDisplay (display) {
+      // 需要将limit parent的区域修改下
+      if (display) {
+        this.editor.changeDisplay(display)
+      }
+    },
     changeZindex () {
       // 组件修改 层级
       // 如果有选中的目标，那么也需要将其 层级修改掉
@@ -179,6 +194,7 @@ export default {
     }
   },
   beforeDestroy () {
+    this.editor.dispose()
   }
 }
 </script>
