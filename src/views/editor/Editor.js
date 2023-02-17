@@ -1,5 +1,5 @@
 import { fabric } from 'fabric'
-import { handleChangeDisplay } from './utils'
+import { handleChangeDisplay, LoactionAndSize, isScaleResize } from './utils'
 import { cDayjs } from './time'
 import { initAligningGuidelines } from './Guidline'
 import Listener, { listenerTypes } from './Listener'
@@ -563,7 +563,7 @@ export default class Editor {
   // 选中物体时，将其信息返回出去
   selectObject () {
     const objs = this.canvas.getActiveObjects()
-    console.log(objs, 'objs')
+    console.log(objs, 'objs', objs[0].getScaledWidth())
     if (objs.length) {
       this.zIndex.set(objs[0].zIndex)
     }
@@ -583,6 +583,7 @@ export default class Editor {
       // 如果是缩放 + 移动后，再添加shape会有问题
       const left = (e.offsetX - vtr[4]) / zoom
       const top = (e.offsetY - vtr[5]) / zoom
+      // Todo 需要将所有的选中元素清空掉
       switch (key) {
         case 'text':
           this.createEditableText({
@@ -824,15 +825,51 @@ export default class Editor {
     this.renderAll()
   }
 
+  // 视频
+  createVideo ({ left, top, el }) {
+    const ele = document.getElementById(el)
+    console.log(ele, el, 'ele')
+    const video = new fabric.Image(ele, {
+      left,
+      top,
+      width: 100,
+      height: 100,
+      originX: 'center',
+      originY: 'center',
+      objectCaching: false
+    })
+    this.addToCanvas(video)
+    ele.play()
+    const self = this
+    fabric.util.requestAnimFrame(function render () {
+      self.canvas.renderAll()
+      fabric.util.requestAnimFrame(render)
+    })
+  }
+
+  changeImage (obj, url) {
+    // const { scaleX, scaleY } = obj
+    obj.setSrc(url, oImg => {
+      // const { naturalWidth, naturalHeight } = oImg.getElement()
+      // console.log(naturalWidth, naturalHeight, oImg, scaleX, scaleY)
+      this.renderAll()
+    }, {
+      left: obj.left,
+      top: obj.top
+    })
+  }
+
   // 图片
   createImg ({ el, left, top }) {
     // 先生成默认的图片
     const url = require('../../assets/1.jpg')
     fabric.Image.fromURL(url, oImg => {
+      const { naturalWidth } = oImg.getElement()
+      const scale = 100 / naturalWidth
+      oImg.scale(scale)
       this.add(oImg)
+      console.log(oImg.width, oImg.height, '23', scale, oImg.getScaledWidth())
     }, {
-      width: 100,
-      height: 100,
       left,
       top
     })
@@ -967,6 +1004,19 @@ export default class Editor {
     setInterval(() => {
       changeText()
     }, 1000)
+  }
+
+  // 修改 宽高和位置
+  setLocationAndSize (type, value, obj) {
+    const key = LoactionAndSize[type]
+    if (isScaleResize(key)) {
+      // 图片类型缩放，需要修改 scaleX scaleY
+    } else {
+      obj.set({
+        [key]: value
+      })
+    }
+    this.renderAll()
   }
 
   // 修改层级，区别于图层，控制 objects的顺序的

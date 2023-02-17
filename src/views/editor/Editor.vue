@@ -30,11 +30,18 @@
 
         <div class="right-properties p-r-10 h-100">
           <template v-if="targetObj">
-            <location-and-size :location="targetLocation"/>
+            <location-and-size
+            :location="targetLocation"
+            @setLocationAndSize="setLocationAndSize"
+            />
             <z-index
               :z-index.sync="currentZIndex.value"
               @changeZindex="changeZindex"
             />
+            <!-- image options -->
+            <template v-if="targetObj.type === 'image'">
+              <el-button @click="changeImage">修改图片</el-button>
+            </template>
           </template>
         </div>
     </div>
@@ -176,6 +183,20 @@ export default {
     },
     selectObject (data) {
       this.targetObj = data[0]
+      const type = this.targetObj.type
+      console.log(this.targetObj, 'targetObj', type)
+      this.handleOperations(type)
+    },
+    handleOperations (type) {
+      if (type === 'image') {
+        this.showImageOperation()
+      }
+    },
+    showImageOperation () {
+
+    },
+    changeImage () {
+      this.editor.changeImage(this.targetObj, 'https://t7.baidu.com/it/u=1819248061,230866778&fm=193&f=GIF')
     },
     setLayer (layer) {
       this.editor.set({
@@ -194,9 +215,15 @@ export default {
       // 如果有选中的目标，那么也需要将其 层级修改掉
       this.editor.changeZIndex()
     },
-    // 点击事件
+    // 点击事件,正方形
     clickEvent (item) {
       this.editor[item.event] && this.editor[item.event]()
+    },
+    // 设置宽高和位置
+    setLocationAndSize (type) {
+      console.log(type, 'type')
+      // 图片和 视频等可能有误差
+      this.editor.setLocationAndSize(type, this.targetLocation[type], this.targetObj)
     }
   },
   beforeDestroy () {

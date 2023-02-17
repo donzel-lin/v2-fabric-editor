@@ -4,15 +4,17 @@
             <span class="labe text-right">位置</span>
             <div class="inputs m-l-10 flex align-center">
                 <el-input-number
-                class="no-buttons"
+                    class="no-buttons"
                     v-model="location.x"
                     :min="maxSize.x"
+                    @change="set('x')"
                     :max="maxSize.x + maxSize.w - location.w"
                 />
                 <el-input-number
                     class="no-buttons"
                     v-model="location.y"
                     :min="0"
+                    @change="set('y')"
                     :max="maxSize.y + maxSize.h - location.h"
                 />
             </div>
@@ -25,12 +27,14 @@
                     v-model="location.w"
                     :min="0"
                     :max="maxSize.w"
+                    @change="set('w')"
                 />
                 <el-input-number
                 class="no-buttons"
                     v-model="location.h"
                     :min="0"
                     :max="maxSize.h"
+                    @change="set('h')"
                 />
             </div>
         </div>
@@ -58,6 +62,11 @@ export default {
         w: 1920,
         h: 1080
       })
+    }
+  },
+  methods: {
+    set (type) {
+      this.$emit('setLocationAndSize', type)
     }
   }
 }
