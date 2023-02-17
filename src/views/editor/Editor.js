@@ -1,6 +1,7 @@
 import { fabric } from 'fabric'
 import { handleChangeDisplay } from './utils'
 import { cDayjs } from './time'
+import { initAligningGuidelines } from './Guidline'
 import Listener, { listenerTypes } from './Listener'
 import Layer, { ZIndex } from './Layer'
 import short from 'short-uuid'
@@ -13,6 +14,11 @@ const canvasOptions = {
 }
 export default class Editor {
   constructor (el, options) {
+    this.strokeStyle = {
+      strokeWidth: 2,
+      stroke: '#ff0'
+    }
+    this.canDrawRect = false
     this.display = {
       x: 1920,
       y: 1080
@@ -48,7 +54,7 @@ export default class Editor {
     this.initDropEvents()
     // 物体移动
     this.initMoving()
-
+    this.initGuideline()
     // 缩放
     this.initScaling()
     this.initResizing()
@@ -94,8 +100,13 @@ export default class Editor {
     const vScale = width / x
     const hScale = height / y
     const scale = Math.min(vScale, hScale)
-    // 可以算出
+    // 可以算出缩放比例
     this.canvas.setZoom(scale)
+  }
+
+  // 辅助线
+  initGuideline () {
+    initAligningGuidelines(this.canvas)
   }
 
   // 平移功能
@@ -145,6 +156,19 @@ export default class Editor {
     })
   }
 
+  // 平移后可能需要做坐标转换
+  transformAcoord (params) {
+    if (!params) return
+    const { x = 0, y = 0, w = 0, h = 0 } = params
+    const vtr = this.canvas.viewportTransform
+    return {
+      x: x ? (x - vtr[4]) / vtr[0] : 0,
+      y: y ? (y - vtr[5]) / vtr[3] : 0,
+      w: w ? w / vtr[0] : 0,
+      h: h ? h / vtr[3] : 0
+    }
+  }
+
   // 限制移动区域
   initLimtRect ({ x = 0, y = 0, w, h, styles }) {
     // 实际是需要根据分辨率来调整的，但是很有可能分辨率达不到那么大
@@ -156,7 +180,7 @@ export default class Editor {
       height: this.display.y,
       fill: 'rgb(204,204,204)',
       strokeWidth: 0,
-      zIndex: -1,
+      zIndex: -1, // 这里需要处理
       hasBorders: false,
       hasControls: false,
       selectable: false
@@ -285,7 +309,6 @@ export default class Editor {
         }
         return false
       }
-      console.log(this.lastScale, 'asdf', targetBounding, limitBounding)
       if (isExceedBound(targetBounding, limitBounding)) {
         // 有超出部分
         target.set({
@@ -555,29 +578,116 @@ export default class Editor {
       const { e } = options
       const dragData = JSON.parse(e.dataTransfer.getData('data'))
       const { key, title } = dragData
+      const zoom = this.canvas.getZoom()
+      const vtr = this.canvas.viewportTransform
+      // 如果是缩放 + 移动后，再添加shape会有问题
+      const left = (e.offsetX - vtr[4]) / zoom
+      const top = (e.offsetY - vtr[5]) / zoom
       switch (key) {
         case 'text':
           this.createEditableText({
             text: title,
-            left: e.offsetX,
-            top: e.offsetY,
+            left,
+            top,
             addToCanvas: true
           })
           break
         case 'img':
-          this.createImg({ el: dragData.el, left: e.offsetX, top: e.offsetY })
+          this.createImg({ el: dragData.el, left, top })
           break
         case 'clock':
-          this.createClockPan({ left: e.offsetX, top: e.offsetY })
+          this.createClockPan({ left, top })
           break
         case 'timeText':
-          this.createTimeText({ left: e.offsetX, top: e.offsetY })
+          this.createTimeText({ left, top })
           break
         case 'video':
-          this.createVideo({ left: e.offsetX, top: e.offsetY, el: dragData.el })
+          this.createVideo({ left, top, el: dragData.el })
           break
       }
     })
+  }
+
+  // 画正方形
+  drawRect () {
+    // this.transformAcoord()
+    if (this.canDrawRect) return
+    // 开始画矩形
+    this.canDrawRect = true
+    const self = this
+    let started = false
+    let x = 0
+    let y = 0
+    let left = 0
+    let top = 0
+    let w = 0
+    let h = 0
+    let vtr = null
+    // canvas的父元素
+    const parentDom = document.getElementsByClassName('canvas-container')[0]
+    let dom
+    if (this.canvas.getActiveObject()) {
+      // 将选中的元素取消 选中
+      this.canvas.discardActiveObject().renderAll()
+    }
+    this.canvas.on('mouse:down', oMouseDown)
+    this.canvas.on('mouse:move', oMouseMove)
+    this.canvas.on('mouse:up', oMouseUp)
+    function oMouseDown (options) {
+      if (this.getActiveObject() || !self.canDrawRect || started) return
+      started = true
+      vtr = this.viewportTransform
+      console.log(vtr, 'asdf', options.absolutePointer)
+      x = options.absolutePointer.x
+      y = options.absolutePointer.y
+      left = x * vtr[0] + vtr[4]
+      top = y * vtr[3] + vtr[5]
+      dom = document.createElement('div')
+      dom.className = 'rect drawing'
+      dom.style = `left: ${left}px;top: ${top}px;width: ${w}px;height: ${h}px;`
+      parentDom.append(dom)
+    }
+    function oMouseMove (options) {
+      if (!started || !self.canDrawRect) {
+        return false
+      }
+      // 负值需要处理下。。。
+      w = Math.abs(options.absolutePointer.x - x) * vtr[0]
+      h = Math.abs(options.absolutePointer.y - y) * vtr[3]
+      if (!w || !h) {
+        return false
+      }
+      dom.style = `left: ${left}px;top: ${top}px;width: ${w}px;height: ${h}px;`
+    }
+    function oMouseUp () {
+      if (started) {
+        started = false
+      }
+      if (self.canDrawRect) {
+        self.canDrawRect = false
+        // 绘制完，需要移除监听事件
+        this.off('mouse:down', oMouseDown)
+        this.off('mouse:move', oMouseMove)
+        this.off('mouse:up', oMouseUp)
+      }
+      // 虚线框
+      if (w > 5 && h > 5) { // 有值
+        // 添加rect shape
+        parentDom.removeChild(dom)
+        const square = new fabric.Rect({
+          width: w / vtr[0],
+          height: h / vtr[3],
+          left: x,
+          top: y,
+          fill: '#fff',
+          hasBorders: false,
+          strokeWidth: self.strokeStyle.strokeWidth,
+          stroke: self.strokeStyle.stroke,
+          borderDashArray: [5, 2]
+        })
+        self.add(square)
+      }
+    }
   }
 
   // 可编辑文本
@@ -714,6 +824,20 @@ export default class Editor {
     this.renderAll()
   }
 
+  // 图片
+  createImg ({ el, left, top }) {
+    // 先生成默认的图片
+    const url = require('../../assets/1.jpg')
+    fabric.Image.fromURL(url, oImg => {
+      this.add(oImg)
+    }, {
+      width: 100,
+      height: 100,
+      left,
+      top
+    })
+  }
+
   // 时间表盘
   createClockPan ({ left, top }) {
     // 时间表盘
@@ -821,6 +945,27 @@ export default class Editor {
     this.add(group)
     this.clockTimer = setInterval(() => {
       movePointTimeFn()
+    }, 1000)
+  }
+
+  // 时间文本
+  createTimeText ({ left, top }) {
+    const text = cDayjs().format('YYYY-MM-DD HH:mm:ss')
+    const fText = new fabric.Text(text, {
+      left,
+      top,
+      editable: false,
+      lockScalingX: true,
+      lockScalingY: true
+    })
+    const changeText = () => {
+      const text = cDayjs().format('YYYY-MM-DD HH:mm:ss')
+      fText.set('text', text)
+      this.renderAll()
+    }
+    this.add(fText)
+    setInterval(() => {
+      changeText()
     }, 1000)
   }
 

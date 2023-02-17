@@ -27,7 +27,24 @@ class Dayjs {
 
   // 格式化
   format (formatter) {
-    return this.date.format(formatter)
+    var o = {
+      'M+': this.date.getMonth() + 1, // 月份
+      'd+': this.date.getDate(), // 日
+      'h+': this.date.getHours(), // 小时
+      'm+': this.date.getMinutes(), // 分
+      's+': this.date.getSeconds(), // 秒
+      'q+': Math.floor((this.date.getMonth() + 3) / 3), // 季度
+      S: this.date.getMilliseconds() // 毫秒
+    }
+    if (/(y+)/i.test(formatter)) {
+      formatter = formatter.replace(RegExp.$1, (this.date.getFullYear() + '').substring(4 - RegExp.$1.length))
+    }
+    for (var k in o) {
+      if (new RegExp('(' + k + ')', 'i').test(formatter)) {
+        formatter = formatter.replace(RegExp.$1, (RegExp.$1.length === 1) ? (o[k]) : (('00' + o[k]).substring(('' + o[k]).length)))
+      }
+    }
+    return formatter
   }
 }
 

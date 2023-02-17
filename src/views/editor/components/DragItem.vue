@@ -2,10 +2,11 @@
     <div>
         <ul>
             <li
-                v-for="item in showItems"
-                :key="item.id"
-                draggable="true"
-                @dragstart="dragItem(item)"
+              v-for="item in showItems"
+              :key="item.id"
+              draggable="true"
+              @dragstart="dragItem(item)"
+              @click="clickItem(item)"
             >{{  item.title }}</li>
         </ul>
     </div>
@@ -25,22 +26,39 @@ export default {
         text: {
           id: 1,
           key: 'text',
+          type: 'drag',
           title: '文本'
         },
         image: {
           id: 2,
-          key: 'image',
+          key: 'img',
+          type: 'drag',
           title: '图片'
         },
         varable: {
           id: 3,
           key: 'varable',
+          type: 'drag',
           title: '变量'
         },
         clock: {
           id: 4,
           key: 'clock',
+          type: 'drag',
           title: '时钟表盘'
+        },
+        timeText: {
+          id: 5,
+          key: 'timeText',
+          type: 'drag',
+          title: '时间文本'
+        },
+        rect: {
+          id: 6,
+          key: 'rect',
+          type: 'click',
+          event: 'drawRect',
+          title: '正方向'
         }
       }
     }
@@ -63,8 +81,13 @@ export default {
   },
   methods: {
     dragItem (item) {
+      if (item.type === 'click') return
       const evt = window.event
       evt.dataTransfer.setData('data', JSON.stringify(item))
+    },
+    clickItem (item) {
+      if (item.type === 'drag') return
+      this.$emit('clickEvent', item)
     }
   }
 }

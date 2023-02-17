@@ -1,7 +1,9 @@
 <template>
     <div class="wrapper">
         <div class="left-items h-100">
-          <drag-item />
+          <drag-item
+            @clickEvent="clickEvent"
+          />
         </div>
         <div class="content">
           <div class="upper-tool w-100">
@@ -191,6 +193,10 @@ export default {
       // 组件修改 层级
       // 如果有选中的目标，那么也需要将其 层级修改掉
       this.editor.changeZIndex()
+    },
+    // 点击事件
+    clickEvent (item) {
+      this.editor[item.event] && this.editor[item.event]()
     }
   },
   beforeDestroy () {
@@ -246,5 +252,13 @@ export default {
     video {
       display: none;
     }
+}
+
+::v-deep {
+  .rect.drawing {
+    position: absolute;
+    border: 1px dashed red;
+    background-color: #fff;
+  }
 }
 </style>
